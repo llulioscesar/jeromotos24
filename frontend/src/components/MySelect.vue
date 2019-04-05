@@ -1,0 +1,17 @@
+<template>
+    <q-select :value="value" :options="options" @change="handleChange" filter filter-placeholder="select"/>
+</template>
+
+<script>
+ 
+
+  export default {
+    props: ['value', 'options'],
+    methods: {
+      handleChange (newVal) {
+        this.$emit('input', newVal)
+      }
+    },
+    
+  }
+</script>
