@@ -1,0 +1,136 @@
+INSERT INTO `persona` (`id`, `identificacion`, `nombre`, `telefono`, `correo`, `rol`, `uId`) 
+VALUES (NULL, '1065864163', 'Carlos andres tamayo benjumea', '3136817175', 'cartamayo12@hotmail.com', '1', 'Vmc01CeVhbhyW1cNVAyUPWHj9kC3');
+
+
+
+//trigger before ordenentrada insert
+BEGIN
+IF((SELECT COUNT(*) FROM ordenentrada WHERE ordenentrada.motoId = NEW.motoId)>0)THEN
+SET @id = (SELECT id FROM ordenentrada WHERE ordenentrada.motoId =  NEW.motoId ORDER BY fechaIngreso DESC limit 1);
+set @km = (SELECT kilometraje FROM ordenentrada WHERE id = @id);
+set @fecha = (SELECT fecha_ingreso FROM ordenentrada WHERE id = @id);
+set @dias =(SELECT DATEDIFF(NEW.fechaIngreso, @fecha));
+set @difKm = (NEW.kilometraje- @km);
+set NEW.km_promedio = (@difKm/@dias);
+END IF;
+END
+
+CREATE TRIGGER `km_diario` BEFORE INSERT ON `ordenentrada` FOR EACH ROW 
+BEGIN IF((SELECT COUNT(*) FROM ordenentrada WHERE ordenentrada.motoId = NEW.motoId)>0)THEN 
+SET @id = (SELECT id FROM ordenentrada WHERE ordenentrada.motoId = NEW.motoId ORDER BY fechaIngreso DESC limit 1);
+set @km = (SELECT kilometraje FROM ordenentrada WHERE id = @id); 
+set @fecha = (SELECT fecha_ingreso FROM ordenentrada WHERE id = @id); 
+set @dias =(SELECT DATEDIFF(NEW.fechaIngreso, @fecha)); 
+set @difKm = (NEW.kilometraje- @km); set NEW.km_promedio = (@difKm/@dias); END IF; END
+
+
+
+//promedio diario tabla orden entrada
+CREATE TRIGGER `promedio_diario` BEFORE INSERT ON `ordenentrada` 
+FOR EACH ROW 
+BEGIN
+SET @promedio = (SELECT AVG(kilometraje) FROM ordenentrada WHERE ordenentrada.motoId = NEW.motoId);
+UPDATE moto SET moto.km_promedio = @promedio WHERE moto.placa = NEW.motoId;
+END
+
+CREATE TRIGGER `promedio_diario` BEFORE UPDATE ON `ordenentrada` 
+FOR EACH ROW 
+BEGIN
+SET @promedio = (SELECT AVG(kilometraje) FROM ordenentrada WHERE ordenentrada.motoId = NEW.motoId);
+UPDATE moto SET moto.km_promedio = @promedio WHERE moto.placa = NEW.motoId;
+END
+
+//Activar eventos
+SET GLOBAL event_scheduler=on;
+
+//llenar tabla contador
+CREATE TRIGGER `LlenarContador` BEFORE INSERT ON `moto` 
+FOR EACH ROW 
+BEGIN
+INSERT INTO contador (contador.motoId, contador.servicioId) 
+SELECT moto.placa,servicio_taller.id from moto,servicio_taller 
+END
+
+CREATE TRIGGER `promedio_diario` BEFORE UPDATE ON `ordenentrada` 
+FOR EACH ROW 
+BEGIN
+SET @promedio = (SELECT AVG(kilometraje) FROM ordenentrada WHERE ordenentrada.motoId = NEW.motoId);
+UPDATE moto SET moto.km_promedio = @promedio WHERE moto.placa = NEW.motoId;
+END
+
+
+//cursor
+DROP PROCEDURE IF EXISTS cursorTest;
+DELIMITER $$
+CREATE PROCEDURE cursorTest (
+) BEGIN
+
+  DECLARE s INTEGER;
+  
+  DECLARE fin INTEGER DEFAULT 0;
+
+-- El SELECT que vamos a ejecutar
+  DECLARE runners_cursor CURSOR FOR 
+    SELECT tabla_mantenimiento.servicioId FROM tabla_mantenimiento;
+
+-- Condición de salida
+  DECLARE CONTINUE HANDLER FOR NOT FOUND SET fin=1;
+
+  OPEN runners_cursor;
+  get_runners: LOOP
+    FETCH runners_cursor INTO s;
+    IF fin = 1 THEN
+       LEAVE get_runners;
+    END IF;
+
+select s;
+//INSERT INTO contador (contador.motoId,contador.servicioId) VALUES(a,s);
+  END LOOP get_runners;
+
+  CLOSE runners_cursor;
+END$$
+DELIMITER ;
+
+
+//procedimiento para sumar al contador hay que cambiar el nombre
+
+CREATE PROCEDURE IncrementoContador ( ) BEGIN 
+DECLARE km INTEGER; 
+DECLARE p VARCHAR(6); 
+DECLARE fin INTEGER DEFAULT 0; 
+DECLARE puntero CURSOR FOR SELECT moto.placa, moto.km_promedio FROM moto; 
+DECLARE CONTINUE HANDLER FOR NOT FOUND SET fin=1; 
+OPEN puntero; 
+get_runners: LOOP FETCH puntero INTO p, km; 
+IF fin = 1 THEN LEAVE get_runners; END IF; 
+UPDATE contador SET contador.kilometraje = contador.kilometraje + km WHERE contador.motoId = p; 
+END LOOP get_runners; 
+CLOSE puntero; 
+END
+
+
+
+//trigger llenar contador 
+CREATE TRIGGER `llenarContador` AFTER INSERT ON `moto` FOR EACH ROW 
+BEGIN 
+INSERT INTO contador (contador.motoId,contador.servicioId) 
+SELECT moto.placa,tabla_mantenimiento.servicioId 
+FROM `tabla_mantenimiento`,moto WHERE moto.placa=NEW.placa and tabla_mantenimiento.tipo_motoId=moto.tipo_motoId; 
+END
+
+
+CREATE PROCEDURE Alertas (a VARCHAR(6) ) BEGIN 
+DECLARE p VARCHAR(6); 
+DECLARE kmCont INTEGER; 
+DECLARE kmTabla INTEGER; 
+DECLARE s INTEGER; 
+DECLARE t INTEGER; 
+DECLARE fin INTEGER DEFAULT 0; 
+DECLARE runners_cursor CURSOR FOR SELECT contador.motoId, contador.kilometraje,contador.servicioId FROM contador; 
+DECLARE CONTINUE HANDLER FOR NOT FOUND SET fin=1; 
+OPEN runners_cursor; get_runners: LOOP FETCH runners_cursor INTO p, kmCont, s; 
+IF fin = 1 THEN 
+LEAVE get_runners; 
+END IF; 
+
+SET t= SELECT tabla_mantenimiento.kilometraje FROM tabla_mantenimiento WHERE tabla_mantenimiento.tipo_motoId=(SELECT moto.tipo_motoId FROM moto WHERE moto.placa = a) AND tabla_mantenimiento.servicioId=s; END LOOP get_runners; CLOSE runners_cursor; END

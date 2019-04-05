@@ -1,0 +1,201 @@
+//Disparadores
+
+ 1.
+  //Usando phpMyadmyn ok
+   
+   nombre: crearContador
+   tabla: moto
+   tiempo: AFTER
+   evento: INSERT
+
+   BEGIN
+   INSERT INTO contador (contador.motoId,contador.servicioId) 
+   SELECT moto.placa,tabla_mantenimiento.servicioId 
+   FROM `tabla_mantenimiento`,moto WHERE moto.placa=NEW.placa and tabla_mantenimiento.tipo_motoId=moto.tipo_motoId;
+   END
+
+  //Usando sentencia sql
+
+   DROP TRIGGER IF EXISTS `crearContador`;CREATE DEFINER=`root`@`localhost` TRIGGER `crearContador` 
+   AFTER INSERT ON `moto` FOR EACH ROW 
+   BEGIN INSERT INTO contador (contador.motoId,contador.servicioId) 
+   SELECT moto.placa,tabla_mantenimiento.servicioId FROM `tabla_mantenimiento`,moto WHERE moto.placa=NEW.placa and tabla_mantenimiento.tipo_motoId=moto.tipo_motoId; END
+
+
+2.
+ //Usando phpMyadmyn ok
+   
+   nombre: km_diario
+   tabla: ordenentrada
+   tiempo: BEFORE
+   evento: INSERT
+
+   BEGIN
+   IF((SELECT COUNT(*) FROM ordenentrada WHERE ordenentrada.motoId = NEW.motoId)>0)THEN
+   SET @id = (SELECT id FROM ordenentrada WHERE ordenentrada.motoId =  NEW.motoId ORDER BY fechaIngreso DESC limit 1);
+   set @km = (SELECT kilometraje FROM ordenentrada WHERE id = @id);
+   set @fecha = (SELECT fechaIngreso FROM ordenentrada WHERE id = @id);
+   set @dias =(SELECT DATEDIFF(NEW.fechaIngreso, @fecha));
+   set @difKm = (NEW.kilometraje- @km);
+   set NEW.km_promedio = (@difKm/@dias);
+   END IF;
+   END
+
+  //Usando sentencia sql
+
+  DROP TRIGGER IF EXISTS `km_diario`;CREATE DEFINER=`root`@`localhost` TRIGGER `km_diario` 
+  BEFORE INSERT ON `ordenentrada` FOR EACH ROW BEGIN IF((SELECT COUNT(*) FROM ordenentrada 
+  WHERE ordenentrada.motoId = NEW.motoId)>0)THEN 
+  SET @id = (SELECT id FROM ordenentrada WHERE ordenentrada.motoId = NEW.motoId ORDER BY fechaIngreso DESC limit 1); 
+  set @km = (SELECT kilometraje FROM ordenentrada WHERE id = @id); set @fecha = (SELECT fechaIngreso FROM ordenentrada WHERE id = @id); 
+  set @dias =(SELECT DATEDIFF(NEW.fechaIngreso, @fecha)); set @difKm = (NEW.kilometraje- @km); 
+  set NEW.km_promedio = (@difKm/@dias); 
+  END IF; 
+  END
+
+3.
+ //Usando phpMyadmyn ok
+   
+   nombre: km_diario_moto
+   tabla: ordenentrada
+   tiempo: AFTER
+   evento: INSERT
+
+   BEGIN
+   IF((SELECT COUNT(*) FROM ordenentrada WHERE ordenentrada.motoId = NEW.motoId)>1)THEN
+   SET @promedio = (SELECT AVG(km_promedio) FROM ordenentrada WHERE ordenentrada.motoId = NEW.motoId AND km_promedio>0);
+   UPDATE moto SET moto.km_promedio = @promedio WHERE moto.placa = NEW.motoId;
+   END IF;
+   END
+
+  //Usando sentencia sql
+
+  DROP TRIGGER IF EXISTS `km_diario_moto`;CREATE DEFINER=`root`@`localhost` TRIGGER `km_diario_moto` 
+  AFTER INSERT ON `ordenentrada` FOR EACH ROW BEGIN 
+  IF((SELECT COUNT(*) FROM ordenentrada WHERE ordenentrada.motoId = NEW.motoId)>1)THEN 
+  SET @promedio = (SELECT AVG(km_promedio) FROM ordenentrada WHERE ordenentrada.motoId = NEW.motoId AND km_promedio>0);
+  UPDATE moto SET moto.km_promedio = @promedio WHERE moto.placa = NEW.motoId; 
+  END IF; 
+  END
+
+//Rutinas
+ 
+ 1.
+  //Usando phpMyadmyn
+
+   nombre: incrementoContador
+   tipo: PROCEDURE
+   
+    BEGIN 
+    DECLARE km INTEGER; 
+    DECLARE p VARCHAR(6); 
+    DECLARE fin INTEGER DEFAULT 0; 
+    DECLARE puntero CURSOR FOR SELECT moto.placa, moto.km_promedio FROM moto; 
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET fin=1; 
+    OPEN puntero; 
+    get_runners: LOOP FETCH puntero INTO p, km; 
+    IF fin = 1 THEN LEAVE get_runners; END IF; 
+    UPDATE contador SET contador.kilometraje = contador.kilometraje + km,contador.tiempo = contador.tiempo + 1 
+    WHERE contador.motoId = p; 
+    END LOOP get_runners; 
+    CLOSE puntero; 
+    END
+
+  //Usando sentencia sql
+
+   DROP PROCEDURE `incrementoContador`; 
+   CREATE DEFINER=`root`@`localhost` PROCEDURE `incrementoContador`() NOT DETERMINISTIC NO SQL SQL SECURITY DEFINER 
+   BEGIN 
+   DECLARE km INTEGER; 
+   DECLARE p VARCHAR(6); 
+   DECLARE fin INTEGER DEFAULT 0; 
+   DECLARE puntero CURSOR FOR SELECT moto.placa, moto.km_promedio FROM moto; 
+   DECLARE CONTINUE HANDLER FOR NOT FOUND SET fin=1; 
+   OPEN puntero; 
+   get_runners: LOOP FETCH puntero INTO p, km; 
+   IF fin = 1 THEN 
+   LEAVE get_runners; 
+   END IF; 
+   UPDATE contador SET contador.kilometraje = contador.kilometraje + km,contador.tiempo = contador.tiempo + 1 
+   WHERE contador.motoId = p; 
+   END LOOP get_runners; 
+   CLOSE puntero; 
+   END
+
+ 1.
+  //Usando phpMyadmyn
+
+   nombre: Notificaciones
+   tipo: PROCEDURE
+
+   BEGIN 
+   DECLARE kmTabla INTEGER; 
+   DECLARE kmContador INTEGER;
+   DECLARE i INTEGER;
+   DECLARE fin INTEGER DEFAULT 0; 
+
+   DECLARE puntero CURSOR FOR SELECT contador.id,contador.kilometraje,tabla_mantenimiento.kilometraje 
+   FROM tabla_mantenimiento,contador,moto 
+   WHERE moto.tipo_motoId=tabla_mantenimiento.tipo_motoId 
+   AND contador.servicioId=tabla_mantenimiento.servicioId AND moto.placa=contador.motoId; 
+
+   DECLARE CONTINUE HANDLER FOR NOT FOUND SET fin=1; 
+   OPEN puntero; 
+   get_runners: LOOP FETCH puntero INTO i,kmContador, kmTabla; 
+
+   IF fin = 1 THEN 
+    LEAVE get_runners; 
+   END IF; 
+
+   IF kmContador>KmTabla THEN 
+     UPDATE contador SET contador.notifico = 1 WHERE contador.id =i;
+   END IF; 
+
+   END LOOP get_runners; 
+   CLOSE puntero; 
+   END
+
+
+  //Usando sentencia sql
+
+   DROP PROCEDURE `Notificaciones`; 
+   CREATE DEFINER=`root`@`localhost`
+   CREATE PROCEDURE `Notificaciones`() NOT DETERMINISTIC NO SQL SQL SECURITY DEFINER 
+   BEGIN 
+   DECLARE kmTabla INTEGER; 
+   DECLARE kmContador INTEGER; 
+   DECLARE fin INTEGER DEFAULT 0; 
+   DECLARE puntero CURSOR FOR SELECT contador.kilometraje,tabla_mantenimiento.kilometraje 
+   FROM tabla_mantenimiento,contador,moto 
+   where moto.tipo_motoId=tabla_mantenimiento.tipo_motoId 
+   AND contador.servicioId=tabla_mantenimiento.servicioId AND moto.placa=contador.motoId; 
+   DECLARE CONTINUE HANDLER FOR NOT FOUND SET fin=1; 
+   OPEN puntero; 
+   get_runners: LOOP FETCH puntero INTO kmContador, kmTabla; 
+   IF fin = 1 THEN 
+   LEAVE get_runners; 
+   END IF; 
+   IF kmContador>=KmTabla THEN UPDATE contador SET contador.notifico = 1; 
+   END IF; 
+   END LOOP get_runners; 
+   CLOSE puntero; 
+   END
+   
+     
+
+//Eventos
+
+1.
+ 
+ //Usando phpMyadmyn
+ 
+  nombre:actualizarContador
+  
+  call incrementoContador()
+
+  //Usando sentencias sql
+   DROP EVENT `actualizar_contador`; 
+   CREATE DEFINER=`root`@`localhost` EVENT `actualizar_contador` 
+   ON SCHEDULE EVERY 10 SECOND STARTS '2018-08-23 22:57:17' 
+   ON COMPLETION NOT PRESERVE ENABLE DO call incrementoContador()
+
